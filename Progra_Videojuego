@@ -1,0 +1,1178 @@
+//***************************************************************************************************************************************
+/* Librería para el uso de la pantalla ILI9341 en modo 8 bits
+ * Basado en el código de martinayotte - https://www.stm32duino.com/viewtopic.php?t=637
+ * Adaptación, migración y creación de nuevas funciones: Pablo Mazariegos y José Morales
+ * Con ayuda de: José Guerra
+ * IE3027: Electrónica Digital 2 - 2019
+ */
+//***************************************************************************************************************************************
+#include <SPI.h>
+#include <SD.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <TM4C123GH6PM.h>
+#include "inc/hw_ints.h"
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+#include "driverlib/debug.h"
+#include "driverlib/gpio.h"
+#include "driverlib/interrupt.h"
+#include "driverlib/rom_map.h"
+#include "driverlib/rom.h"
+#include "driverlib/sysctl.h"
+#include "driverlib/timer.h"
+
+#include "bitmaps.h"
+#include "font.h"
+#include "lcd_registers.h"
+
+#define LCD_RST PD_0
+#define LCD_CS PD_1
+#define LCD_RS PD_2
+#define LCD_WR PD_3
+#define LCD_RD PE_1
+int DPINS[] = {PB_0, PB_1, PB_2, PB_3, PB_4, PB_5, PB_6, PB_7};  
+//***************************************************************************************************************************************
+// Functions Prototypes
+//***************************************************************************************************************************************
+void LCD_Init(void);
+void LCD_CMD(uint8_t cmd);
+void LCD_DATA(uint8_t data);
+void SetWindows(unsigned int x1, unsigned int y1, unsigned int x2, unsigned int y2);
+void LCD_Clear(unsigned int c);
+void H_line(unsigned int x, unsigned int y, unsigned int l, unsigned int c);
+void V_line(unsigned int x, unsigned int y, unsigned int l, unsigned int c);
+void Rect(unsigned int x, unsigned int y, unsigned int w, unsigned int h, unsigned int c);
+void FillRect(unsigned int x, unsigned int y, unsigned int w, unsigned int h, unsigned int c);
+void LCD_Print(String text, int x, int y, int fontSize, int color, int background);
+
+void LCD_Bitmap(unsigned int x, unsigned int y, unsigned int width, unsigned int height, unsigned char bitmap[]);
+void LCD_Sprite(int x, int y, int width, int height, unsigned char bitmap[],int columns, int index, char flip, char offset);
+int ascii2hex(int a);
+void mapeo_SD(char doc[]);
+
+
+
+File myFile;
+bool antirrebote1, antirrebote2;
+bool b1 = 1;
+bool b2 = 1;
+int wenas;
+int men = 0; // Variable para almacenar el valor recibido
+int selectt = 2;
+int espera = 0;
+extern uint8_t fight[];
+extern uint8_t Liu[];
+extern uint8_t Zero[];
+int miVariable = 0;
+int Fight = 0;
+int vidaLK = 102;
+int vidaSZ = 102;
+int brake = 0;
+int brake2 = 0;
+int buttonState = 0;         // variable for reading the pushbutton status
+const int buttonPin = PA_7;     // the number of the pushbutton pin
+int button2State = 0;         // variable for reading the pushbutton status
+const int button2Pin = PA_6;     // the number of the pushbutton pin
+const int ledPin =  GREEN_LED;      // the number of the LED pin
+const int led2Pin =  RED_LED;      // the number of the LED pin
+
+const int buzzerPin = PF_1;  // Cambia el pin a PF1
+const int Sound = buzzerPin;
+const int C = 262;
+const int D = 294;
+const int A = 220;
+const int Ab = 233;
+const int E = 329;
+const int E1 = 165;
+const int G = 392;
+const int B = 247;
+const int G1 = 196;
+const int F = 175;
+//***************************************************************************************************************************************
+// Inicialización
+//***************************************************************************************************************************************
+void setup() {
+  Serial.begin(115200);
+  while (!Serial) {
+    ; // Espera a que el puerto serial esté disponible
+  }
+
+  SPI.setModule(0);
+
+  Serial.print("Initializing SD card...");
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(button2Pin, INPUT_PULLUP);
+  pinMode(Sound, OUTPUT);
+
+  
+  pinMode(12, OUTPUT);
+
+  if (!SD.begin(12)) {
+    Serial.println("Initialization failed!");
+    return;
+  }
+  Serial.println("Initialization done");
+
+  
+  SysCtlClockSet(SYSCTL_SYSDIV_2_5|SYSCTL_USE_PLL|SYSCTL_OSC_MAIN|SYSCTL_XTAL_16MHZ);
+  Serial.begin(115200);
+  GPIOPadConfigSet(GPIO_PORTB_BASE, 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7, GPIO_STRENGTH_8MA, GPIO_PIN_TYPE_STD_WPU);
+  Serial.println("Inicio");
+  LCD_Init();
+  //LCD_Clear(0x00);
+  
+  //FillRect(0, 0, 319, 206, 0x421b);
+  //String text1 = "Super Mario World!";
+  //LCD_Print(text1, 20, 100, 2, 0xffff, 0x421b);
+  //LCD_Sprite(int x, int y, int width, int height, unsigned char bitmap[],int columns, int index, char flip, char offset);
+    
+  //LCD_Bitmap(unsigned int x, unsigned int y, unsigned int width, unsigned int height, unsigned char bitmap[]);
+  
+}
+//***************************************************************************************************************************************
+// Loop Infinito
+//***************************************************************************************************************************************
+void loop() {
+    
+  if (Serial.available() > 0) {
+    
+    char receivedChar = Serial.read();
+    Serial.println(receivedChar);
+    
+    if (receivedChar == 'j') {
+      tone(buzzerPin, 5000, 100);
+      tone(buzzerPin, 300, 100);
+      tone(buzzerPin, 50, 100);
+      tone(buzzerPin, 30, 100);
+      delay(2000);      
+      men = 1;
+      Serial.println("Valor 1 recibido y asignado a la variable.");
+      Serial.println(men);
+      mapeo_SD("Fondo1.txt");
+      mapeo_SD("Menu.txt");
+      while (men == 1) {
+        receivedChar = Serial.read();
+        Serial.println(receivedChar);
+          
+        if (receivedChar == 's') {
+          tone(buzzerPin, 1000, 10);
+          tone(buzzerPin, 500, 25);
+          delay(2000);
+          selectt++; // Incrementa la variable cuando se recibe 'S'
+          if (selectt > 3) {
+            
+            selectt = 1; // Reinicia la variable cuando alcanza 2
+            }
+          Serial.print("Valor actual de la variable: ");  
+        }
+        if(selectt == 1){          
+          for(int x = 0; x <320-32; x++){          
+            delay(15);
+            int anim3 = (x/9)%2;
+            LCD_Sprite(129,106,2,2,blinc,2,anim3,0,1);
+            //V_line( x -1, 100, 86, 0x00);
+            //LCD_Bitmap(x, 100, 32, 32, prueba);
+            }
+          receivedChar = Serial.read();
+          Serial.println(receivedChar);
+          while (receivedChar == 'j') {
+            tone(buzzerPin, 5000, 100);
+            tone(buzzerPin, 300, 100);
+            tone(buzzerPin, 50, 100);
+            tone(buzzerPin, 30, 100);
+            delay(2000);
+            espera = 1;
+            mapeo_SD("Mapa.txt");
+            for(int x = 0; x <100-32; x++){                        
+              delay(15);
+              int anim4 = (x/9)%2;
+              LCD_Sprite(79,93,170,60,fight,2,anim4,0,1);
+              }
+            //bool buttonPressed = false; // Variable para verificar si se presionó el botón
+            while (espera == 1) {
+              mapeo_SD("Mapa2.txt");
+              int Fight = 1;
+              while (Fight == 1) {
+                /*if (brake == 1){
+                  brake2 = 1;
+                  break;                  
+                }*/
+                FillRect(8, 11, 102, 10, 0xFFFF);
+                FillRect(211, 11, 102, 10, 0xFFFF);
+                FillRect(8, 11, vidaLK, 10, 0xffe100);
+                FillRect(211, 11, vidaSZ, 10, 0xffe100);
+                button2State = digitalRead(button2Pin);
+                buttonState = digitalRead(buttonPin);
+                if (buttonState == HIGH) {
+                  digitalWrite(ledPin, HIGH);      
+                  // turn LED on:
+                  vidaSZ = vidaSZ - 34;
+                  for(int x = 0; x <80-32; x++){                                        
+                    delay(15);
+                    int anim5 = (x/9)%5;
+                    LCD_Sprite(106,140,102,98,Liu,5,anim5,0,1);
+                  }     
+                } 
+                else if (button2State == HIGH) {
+                  digitalWrite(led2Pin, HIGH);         
+                  vidaLK = vidaLK - 34;
+                  for(int x = 0; x <80-32; x++){                                        
+                    delay(15);
+                    int anim6 = (x/9)%5;
+                    LCD_Sprite(102,155,103,85,Zero,5,anim6,0,1);
+                  }
+                }
+                else if (vidaSZ == 0){
+                  for (int i = 0; i < 2; i++) {
+                      mapeo_SD("LiuKang.txt");
+                      Musica();
+                  }
+                  Fight = 2;
+                } else if (vidaLK == 0){
+                  for (int i = 0; i < 2; i++) {
+                      mapeo_SD("Subzero.txt");
+                      Musica();
+                  }
+                  Fight = 2;
+                }
+                while (Fight == 2 ){
+                  
+                  mapeo_SD("Over.txt");
+                  receivedChar = Serial.read();
+                  Serial.println(receivedChar);
+                  for(int x = 0; x <320-32; x++){          
+                    delay(15);
+                    int anim3 = (x/9)%2;
+                    LCD_Sprite(102,131,109,14,restart,2,anim3,0,1);
+                  }
+                  if (receivedChar == 'j') {
+                    tone(buzzerPin, 5000, 100);
+                    tone(buzzerPin, 300, 100);
+                    tone(buzzerPin, 50, 100);
+                    tone(buzzerPin, 30, 100);
+                    delay(2000);
+                    vidaLK = 102;
+                    vidaSZ = 102;
+                    Fight = 1;
+                    brake = 1;
+                    mapeo_SD("Mapa2.txt");
+                    break;
+                  }
+                }
+              }
+            }
+          }       
+        }else if (selectt == 2){
+          for(int x = 0; x <320-32; x++){          
+            delay(15);
+            int anim5 = (x/9)%2;
+            LCD_Sprite(129,123,2,2,blinc,2,anim5,0,1);
+            //V_line( x -1, 100, 86, 0x00);
+            //LCD_Bitmap(x, 100, 32, 32, prueba);
+            } 
+            
+        }else if (selectt == 3){
+          for(int x = 0; x <320-32; x++){          
+            delay(15);
+            int anim6 = (x/9)%2;
+            LCD_Sprite(129,142,2,2,blinc,2,anim6,0,1);
+            //V_line( x -1, 100, 86, 0x00);
+            //LCD_Bitmap(x, 100, 32, 32, prueba);
+            }
+            
+        }  
+      }
+                  
+    }else{
+        //No pasa nada 
+      }
+  }else{
+      if(men == 0){
+        mapeo_SD("Fondo1.txt");
+        for(int x = 0; x <320-32; x++){
+          delay(15);
+          int anim2 = (x/9)%2;
+          LCD_Sprite(110,214,96,16,start,2,anim2,0,1);
+          //V_line( x -1, 100, 86, 0x00);
+          //LCD_Bitmap(x, 100, 32, 32, prueba);
+         }
+        }
+      
+  }
+}
+//***************************************************************************************************************************************
+// Función para inicializar LCD
+//***************************************************************************************************************************************
+void LCD_Init(void) {
+  pinMode(LCD_RST, OUTPUT);
+  pinMode(LCD_CS, OUTPUT);
+  pinMode(LCD_RS, OUTPUT);
+  pinMode(LCD_WR, OUTPUT);
+  pinMode(LCD_RD, OUTPUT);
+  for (uint8_t i = 0; i < 8; i++){
+    pinMode(DPINS[i], OUTPUT);
+  }
+  //****************************************
+  // Secuencia de Inicialización
+  //****************************************
+  digitalWrite(LCD_CS, HIGH);
+  digitalWrite(LCD_RS, HIGH);
+  digitalWrite(LCD_WR, HIGH);
+  digitalWrite(LCD_RD, HIGH);
+  digitalWrite(LCD_RST, HIGH);
+  delay(5);
+  digitalWrite(LCD_RST, LOW);
+  delay(20);
+  digitalWrite(LCD_RST, HIGH);
+  delay(150);
+  digitalWrite(LCD_CS, LOW);
+  //****************************************
+  LCD_CMD(0xE9);  // SETPANELRELATED
+  LCD_DATA(0x20);
+  //****************************************
+  LCD_CMD(0x11); // Exit Sleep SLEEP OUT (SLPOUT)
+  delay(100);
+  //****************************************
+  LCD_CMD(0xD1);    // (SETVCOM)
+  LCD_DATA(0x00);
+  LCD_DATA(0x71);
+  LCD_DATA(0x19);
+  //****************************************
+  LCD_CMD(0xD0);   // (SETPOWER) 
+  LCD_DATA(0x07);
+  LCD_DATA(0x01);
+  LCD_DATA(0x08);
+  //****************************************
+  LCD_CMD(0x36);  // (MEMORYACCESS)
+  LCD_DATA(0x40|0x80|0x20|0x08); // LCD_DATA(0x19);
+  //****************************************
+  LCD_CMD(0x3A); // Set_pixel_format (PIXELFORMAT)
+  LCD_DATA(0x05); // color setings, 05h - 16bit pixel, 11h - 3bit pixel
+  //****************************************
+  LCD_CMD(0xC1);    // (POWERCONTROL2)
+  LCD_DATA(0x10);
+  LCD_DATA(0x10);
+  LCD_DATA(0x02);
+  LCD_DATA(0x02);
+  //****************************************
+  LCD_CMD(0xC0); // Set Default Gamma (POWERCONTROL1)
+  LCD_DATA(0x00);
+  LCD_DATA(0x35);
+  LCD_DATA(0x00);
+  LCD_DATA(0x00);
+  LCD_DATA(0x01);
+  LCD_DATA(0x02);
+  //****************************************
+  LCD_CMD(0xC5); // Set Frame Rate (VCOMCONTROL1)
+  LCD_DATA(0x04); // 72Hz
+  //****************************************
+  LCD_CMD(0xD2); // Power Settings  (SETPWRNORMAL)
+  LCD_DATA(0x01);
+  LCD_DATA(0x44);
+  //****************************************
+  LCD_CMD(0xC8); //Set Gamma  (GAMMASET)
+  LCD_DATA(0x04);
+  LCD_DATA(0x67);
+  LCD_DATA(0x35);
+  LCD_DATA(0x04);
+  LCD_DATA(0x08);
+  LCD_DATA(0x06);
+  LCD_DATA(0x24);
+  LCD_DATA(0x01);
+  LCD_DATA(0x37);
+  LCD_DATA(0x40);
+  LCD_DATA(0x03);
+  LCD_DATA(0x10);
+  LCD_DATA(0x08);
+  LCD_DATA(0x80);
+  LCD_DATA(0x00);
+  //****************************************
+  LCD_CMD(0x2A); // Set_column_address 320px (CASET)
+  LCD_DATA(0x00);
+  LCD_DATA(0x00);
+  LCD_DATA(0x01);
+  LCD_DATA(0x3F);
+  //****************************************
+  LCD_CMD(0x2B); // Set_page_address 480px (PASET)
+  LCD_DATA(0x00);
+  LCD_DATA(0x00);
+  LCD_DATA(0x01);
+  LCD_DATA(0xE0);
+//  LCD_DATA(0x8F);
+  LCD_CMD(0x29); //display on 
+  LCD_CMD(0x2C); //display on
+
+  LCD_CMD(ILI9341_INVOFF); //Invert Off
+  delay(120);
+  LCD_CMD(ILI9341_SLPOUT);    //Exit Sleep
+  delay(120);
+  LCD_CMD(ILI9341_DISPON);    //Display on
+  digitalWrite(LCD_CS, HIGH);
+}
+//***************************************************************************************************************************************
+// Función para enviar comandos a la LCD - parámetro (comando)
+//***************************************************************************************************************************************
+void LCD_CMD(uint8_t cmd) {
+  digitalWrite(LCD_RS, LOW);
+  digitalWrite(LCD_WR, LOW);
+  GPIO_PORTB_DATA_R = cmd;
+  digitalWrite(LCD_WR, HIGH);
+}
+//***************************************************************************************************************************************
+// Función para enviar datos a la LCD - parámetro (dato)
+//***************************************************************************************************************************************
+void LCD_DATA(uint8_t data) {
+  digitalWrite(LCD_RS, HIGH);
+  digitalWrite(LCD_WR, LOW);
+  GPIO_PORTB_DATA_R = data;
+  digitalWrite(LCD_WR, HIGH);
+}
+//***************************************************************************************************************************************
+// Función para definir rango de direcciones de memoria con las cuales se trabajara (se define una ventana)
+//***************************************************************************************************************************************
+void SetWindows(unsigned int x1, unsigned int y1, unsigned int x2, unsigned int y2) {
+  LCD_CMD(0x2a); // Set_column_address 4 parameters
+  LCD_DATA(x1 >> 8);
+  LCD_DATA(x1);   
+  LCD_DATA(x2 >> 8);
+  LCD_DATA(x2);   
+  LCD_CMD(0x2b); // Set_page_address 4 parameters
+  LCD_DATA(y1 >> 8);
+  LCD_DATA(y1);   
+  LCD_DATA(y2 >> 8);
+  LCD_DATA(y2);   
+  LCD_CMD(0x2c); // Write_memory_start
+}
+//***************************************************************************************************************************************
+// Función para borrar la pantalla - parámetros (color)
+//***************************************************************************************************************************************
+void LCD_Clear(unsigned int c){  
+  unsigned int x, y;
+  LCD_CMD(0x02c); // write_memory_start
+  digitalWrite(LCD_RS, HIGH);
+  digitalWrite(LCD_CS, LOW);   
+  SetWindows(0, 0, 319, 239); // 479, 319);
+  for (x = 0; x < 320; x++)
+    for (y = 0; y < 240; y++) {
+      LCD_DATA(c >> 8); 
+      LCD_DATA(c); 
+    }
+  digitalWrite(LCD_CS, HIGH);
+} 
+//***************************************************************************************************************************************
+// Función para dibujar una línea horizontal - parámetros ( coordenada x, cordenada y, longitud, color)
+//*************************************************************************************************************************************** 
+void H_line(unsigned int x, unsigned int y, unsigned int l, unsigned int c) {  
+  unsigned int i, j;
+  LCD_CMD(0x02c); //write_memory_start
+  digitalWrite(LCD_RS, HIGH);
+  digitalWrite(LCD_CS, LOW);
+  l = l + x;
+  SetWindows(x, y, l, y);
+  j = l;// * 2;
+  for (i = 0; i < l; i++) {
+      LCD_DATA(c >> 8); 
+      LCD_DATA(c); 
+  }
+  digitalWrite(LCD_CS, HIGH);
+}
+//***************************************************************************************************************************************
+// Función para dibujar una línea vertical - parámetros ( coordenada x, cordenada y, longitud, color)
+//*************************************************************************************************************************************** 
+void V_line(unsigned int x, unsigned int y, unsigned int l, unsigned int c) {  
+  unsigned int i,j;
+  LCD_CMD(0x02c); //write_memory_start
+  digitalWrite(LCD_RS, HIGH);
+  digitalWrite(LCD_CS, LOW);
+  l = l + y;
+  SetWindows(x, y, x, l);
+  j = l; //* 2;
+  for (i = 1; i <= j; i++) {
+    LCD_DATA(c >> 8); 
+    LCD_DATA(c);
+  }
+  digitalWrite(LCD_CS, HIGH);  
+}
+//***************************************************************************************************************************************
+// Función para dibujar un rectángulo - parámetros ( coordenada x, cordenada y, ancho, alto, color)
+//***************************************************************************************************************************************
+void Rect(unsigned int x, unsigned int y, unsigned int w, unsigned int h, unsigned int c) {
+  H_line(x  , y  , w, c);
+  H_line(x  , y+h, w, c);
+  V_line(x  , y  , h, c);
+  V_line(x+w, y  , h, c);
+}
+//***************************************************************************************************************************************
+// Función para dibujar un rectángulo relleno - parámetros ( coordenada x, cordenada y, ancho, alto, color)
+//***************************************************************************************************************************************
+/*void FillRect(unsigned int x, unsigned int y, unsigned int w, unsigned int h, unsigned int c) {
+  unsigned int i;
+  for (i = 0; i < h; i++) {
+    H_line(x  , y  , w, c);
+    H_line(x  , y+i, w, c);
+  }
+}
+*/
+
+void FillRect(unsigned int x, unsigned int y, unsigned int w, unsigned int h, unsigned int c) {
+  LCD_CMD(0x02c); // write_memory_start
+  digitalWrite(LCD_RS, HIGH);
+  digitalWrite(LCD_CS, LOW); 
+  
+  unsigned int x2, y2;
+  x2 = x+w;
+  y2 = y+h;
+  SetWindows(x, y, x2-1, y2-1);
+  unsigned int k = w*h*2-1;
+  unsigned int i, j;
+  for (int i = 0; i < w; i++) {
+    for (int j = 0; j < h; j++) {
+      LCD_DATA(c >> 8);
+      LCD_DATA(c);
+      
+      //LCD_DATA(bitmap[k]);    
+      k = k - 2;
+     } 
+  }
+  digitalWrite(LCD_CS, HIGH);
+}
+//***************************************************************************************************************************************
+// Función para dibujar texto - parámetros ( texto, coordenada x, cordenada y, color, background) 
+//***************************************************************************************************************************************
+void LCD_Print(String text, int x, int y, int fontSize, int color, int background) {
+  int fontXSize ;
+  int fontYSize ;
+  
+  if(fontSize == 1){
+    fontXSize = fontXSizeSmal ;
+    fontYSize = fontYSizeSmal ;
+  }
+  if(fontSize == 2){
+    fontXSize = fontXSizeBig ;
+    fontYSize = fontYSizeBig ;
+  }
+  
+  char charInput ;
+  int cLength = text.length();
+  Serial.println(cLength,DEC);
+  int charDec ;
+  int c ;
+  int charHex ;
+  char char_array[cLength+1];
+  text.toCharArray(char_array, cLength+1) ;
+  for (int i = 0; i < cLength ; i++) {
+    charInput = char_array[i];
+    Serial.println(char_array[i]);
+    charDec = int(charInput);
+    digitalWrite(LCD_CS, LOW);
+    SetWindows(x + (i * fontXSize), y, x + (i * fontXSize) + fontXSize - 1, y + fontYSize );
+    long charHex1 ;
+    for ( int n = 0 ; n < fontYSize ; n++ ) {
+      if (fontSize == 1){
+        charHex1 = pgm_read_word_near(smallFont + ((charDec - 32) * fontYSize) + n);
+      }
+      if (fontSize == 2){
+        charHex1 = pgm_read_word_near(bigFont + ((charDec - 32) * fontYSize) + n);
+      }
+      for (int t = 1; t < fontXSize + 1 ; t++) {
+        if (( charHex1 & (1 << (fontXSize - t))) > 0 ) {
+          c = color ;
+        } else {
+          c = background ;
+        }
+        LCD_DATA(c >> 8);
+        LCD_DATA(c);
+      }
+    }
+    digitalWrite(LCD_CS, HIGH);
+  }
+}
+//***************************************************************************************************************************************
+// Función para dibujar una imagen a partir de un arreglo de colores (Bitmap) Formato (Color 16bit R 5bits G 6bits B 5bits)
+//***************************************************************************************************************************************
+void LCD_Bitmap(unsigned int x, unsigned int y, unsigned int width, unsigned int height, unsigned char bitmap[]){  
+  LCD_CMD(0x02c); // write_memory_start
+  digitalWrite(LCD_RS, HIGH);
+  digitalWrite(LCD_CS, LOW); 
+  
+  unsigned int x2, y2;
+  x2 = x+width;
+  y2 = y+height;
+  SetWindows(x, y, x2-1, y2-1);
+  unsigned int k = 0;
+  unsigned int i, j;
+
+  for (int i = 0; i < width; i++) {
+    for (int j = 0; j < height; j++) {
+      LCD_DATA(bitmap[k]);
+      LCD_DATA(bitmap[k+1]);
+      //LCD_DATA(bitmap[k]);    
+      k = k + 2;
+     } 
+  }
+  digitalWrite(LCD_CS, HIGH);
+}
+//***************************************************************************************************************************************
+// Función para dibujar una imagen sprite - los parámetros columns = número de imagenes en el sprite, index = cual desplegar, flip = darle vuelta
+//***************************************************************************************************************************************
+void LCD_Sprite(int x, int y, int width, int height, unsigned char bitmap[],int columns, int index, char flip, char offset){
+  LCD_CMD(0x02c); // write_memory_start
+  digitalWrite(LCD_RS, HIGH);
+  digitalWrite(LCD_CS, LOW); 
+
+  unsigned int x2, y2;
+  x2 =   x+width;
+  y2=    y+height;
+  SetWindows(x, y, x2-1, y2-1);
+  int k = 0;
+  int ancho = ((width*columns));
+  if(flip){
+  for (int j = 0; j < height; j++){
+      k = (j*(ancho) + index*width -1 - offset)*2;
+      k = k+width*2;
+     for (int i = 0; i < width; i++){
+      LCD_DATA(bitmap[k]);
+      LCD_DATA(bitmap[k+1]);
+      k = k - 2;
+     } 
+  }
+  }else{
+     for (int j = 0; j < height; j++){
+      k = (j*(ancho) + index*width + 1 + offset)*2;
+     for (int i = 0; i < width; i++){
+      LCD_DATA(bitmap[k]);
+      LCD_DATA(bitmap[k+1]);
+      k = k + 2;
+     } 
+  }
+    
+    
+    }
+  digitalWrite(LCD_CS, HIGH);
+}
+
+int ascii2hex(int a){
+  switch (a) {
+    case (48):
+      return 0;
+    case (49):
+      return 1;
+    case (50):
+      return 2;
+    case (51):
+      return 3;
+    case (52):
+      return 4;
+    case (53):
+      return 5;
+    case (54):
+      return 6;
+    case (55):
+      return 7;
+    case (56):
+      return 8;
+    case (57):
+      return 9;
+    case (97):
+      return 10;
+    case (98):
+      return 11;
+    case (99):
+      return 12;
+    case (100):
+      return 13;
+    case (101):
+      return 14;
+    case (102):
+      return 15;  
+  }
+}
+
+void mapeo_SD(char doc[]){
+  myFile = SD.open(doc, FILE_READ);
+  int hex1 = 0;
+  int val1 = 0;
+  int val2 = 0;
+  int mapear = 0;
+  int vertical = 0;
+  unsigned char maps [640];
+
+  if(myFile) {
+    while (myFile.available()){
+      mapear = 0;
+      while (mapear < 640){
+        hex1 = myFile.read();
+        if(hex1 == 120) {
+          val1 = myFile.read();
+          val2 = myFile.read();
+          val1 = ascii2hex(val1);
+          val2 = ascii2hex(val2);
+          maps[mapear] = val1 * 16 + val2;
+          mapear ++;
+        }
+      }
+      LCD_Bitmap(0, vertical, 320, 1, maps);
+      vertical++;
+      
+    }
+    myFile.close();
+  }
+  else{
+    Serial.println("No se pudo abrir la imagen");
+    myFile.close();
+  }  
+}
+
+void Musica() {
+  // Reproduce la melodía en el buzzer
+
+    
+
+    tone(buzzerPin, A, 500);
+    delay(250);
+    tone(buzzerPin, A, 500);
+    delay(250);
+    tone(buzzerPin, C, 500);
+    delay(250);
+    tone(buzzerPin, A, 500);
+    delay(250);
+    tone(buzzerPin, D, 500);
+    delay(250);
+    tone(buzzerPin, A, 500);
+    delay(250);
+    tone(buzzerPin, E, 500);   
+    delay(250);
+    tone(buzzerPin, D, 500);    
+    delay(250);
+    tone(buzzerPin, C, 500);
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    
+    delay(250);
+    tone(buzzerPin, E, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, G, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, E, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+    //(bluePin, LOW);
+
+    delay(250);
+    tone(buzzerPin, G1, 500);
+
+    delay(250);
+    tone(buzzerPin, G1, 500);
+
+    delay(250);
+    tone(buzzerPin, B, 500);
+
+    delay(250);
+    tone(buzzerPin, G1, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, G1, 500);
+
+    delay(250);
+    tone(buzzerPin, D, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, F, 500);
+
+    delay(250);
+    tone(buzzerPin, F, 500);
+ 
+    delay(250);
+    tone(buzzerPin, A, 500);
+
+    delay(250);
+    tone(buzzerPin, F, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, F, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, B, 500);
+
+    delay(250);
+    tone(buzzerPin, A, 500);
+
+    delay(250);
+    tone(buzzerPin, A, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, A, 500);
+
+    delay(250);
+    tone(buzzerPin, D, 500);
+
+    delay(250);
+    tone(buzzerPin, A, 500);
+
+    delay(250);
+    tone(buzzerPin, E, 500);
+
+    delay(250);
+    tone(buzzerPin, D, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, E, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, G, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, E, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, G1, 500);
+
+    delay(250);
+    tone(buzzerPin, G1, 500);
+
+    delay(250);
+    tone(buzzerPin, B, 500);
+
+    delay(250);
+    tone(buzzerPin, G1, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, G1, 500);
+
+    delay(250);
+    tone(buzzerPin, D, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, F, 500);
+
+    delay(250);
+    tone(buzzerPin, F, 500);
+
+    delay(250);
+    tone(buzzerPin, A, 500);
+
+    delay(250);
+    tone(buzzerPin, F, 500);
+ 
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, F, 500);
+
+    delay(250);
+    tone(buzzerPin, C, 500);
+
+    delay(250);
+    tone(buzzerPin, B, 500);
+
+    delay(250);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, G1, 200);
+    //(bluePin, LOW);
+  //(redPin, LOW);
+  //(ledGreen, HIGH);
+    delay(200);
+    tone(buzzerPin, C, 200);
+    //(bluePin, HIGH);
+  //(redPin, LOW);
+  //(ledGreen, LOW);
+    delay(250);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, G1, 200);
+    //(bluePin, HIGH);
+  //(redPin, LOW);
+  //(ledGreen, LOW);
+    delay(200);
+    tone(buzzerPin, E1, 200);
+    //(bluePin, LOW);
+  //(redPin, LOW);
+  //(ledGreen, HIGH);
+    delay(250);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, G1, 200);
+    //(bluePin, LOW);
+  //(redPin, LOW);
+  //(ledGreen, HIGH);
+    delay(200);
+    tone(buzzerPin, C, 200);
+    //(bluePin, HIGH);
+  //(redPin, LOW);
+  //(ledGreen, LOW);
+    delay(250);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(200);
+    
+    
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(100);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(200);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(100);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, G1, 200);
+    //(bluePin, LOW);
+  //(redPin, LOW);
+  //(ledGreen, HIGH);
+    delay(200);
+    tone(buzzerPin, C, 200);
+    //(bluePin, HIGH);
+  //(redPin, LOW);
+  //(ledGreen, LOW);
+    delay(250);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, G1, 200);
+    //(bluePin, HIGH);
+  //(redPin, LOW);
+  //(ledGreen, LOW);
+    delay(200);
+    tone(buzzerPin, E1, 200);
+    //(bluePin, LOW);
+  //(redPin, LOW);
+  //(ledGreen, HIGH);
+    delay(250);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, G1, 200);
+    //(bluePin, LOW);
+  //(redPin, LOW);
+  //(ledGreen, HIGH);
+    delay(200);
+    tone(buzzerPin, C, 200);
+    //(bluePin, HIGH);
+  //(redPin, LOW);
+  //(ledGreen, LOW);
+    delay(250);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(400);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(200);
+    
+    
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(100);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(200);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(100);
+    tone(buzzerPin, A, 100);
+    //(bluePin, LOW);
+  //(redPin, HIGH);
+  //(ledGreen, LOW);
+    delay(500);
+   
+    
+    
+       
+  
+
+}
